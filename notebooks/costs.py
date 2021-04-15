@@ -35,29 +35,30 @@ class CostModelQuadraticTranslation():
     '''
     The quadratic cost model for the end effector, p = f(x)
     '''
-    def __init__(self, sys, W, p_ref = None):
+    def __init__(self, sys, W, ee_id, p_ref = None):
         self.sys = sys
         self.Dx, self.Du = sys.Dx, sys.Du
         self.W = W
         self.p_ref = p_ref
         if p_ref is None: self.p_ref = np.zeros(3)
-            
+        self.ee_id = ee_id
+        
     def set_ref(self, p_ref):
         self.p_ref = p_ref
         
     def calc(self, x, u):
-        p,_ = self.sys.compute_ee(x)
+        p,_ = self.sys.compute_ee(x, self.ee_id)
         self.L = 0.5*(p-self.p_ref).T.dot(self.W).dot(p-self.p_ref) 
         return self.L
     
     def calcDiff(self, x, u):
-        self.J   = self.sys.compute_Jacobian(x)
-        p,_      = self.sys.compute_ee(x)
+        p,_      = self.sys.compute_ee(x, self.ee_id)
+        self.J   = self.sys.compute_Jacobian(x, self.ee_id)[:3] #Only use the translation Jacobian
         self.Lx  = self.J.T.dot(self.W).dot(p-self.p_ref)
-        self.Lx = np.concatenate([self.Lx, np.zeros(self.Dx/2)])
+        self.Lx = np.concatenate([self.Lx, np.zeros(int(self.Dx/2))])
         self.Lu  = np.zeros(self.Du)
         self.Lxx = np.zeros((self.Dx, self.Dx))
-        self.Lxx[:self.Dx/2, :self.Dx/2] = self.J.T.dot(self.W).dot(self.J)
+        self.Lxx[:int(self.Dx/2), :int(self.Dx/2)] = self.J.T.dot(self.W).dot(self.J)
         self.Lxu = np.zeros((self.Dx, self.Du))
         self.Luu  = np.zeros((self.Du, self.Du))
 
@@ -92,7 +93,7 @@ class CostModelCollisionEllipsoid():
     '''
     The collision cost model between the end-effector and an ellipsoid obstacle
     '''
-    def __init__(self, sys, p_obs, Sigma_obs, w_obs = 1., d_thres = 1.):
+    def __init__(self, sys, p_obs, Sigma_obs, ee_id, w_obs = 1., d_thres = 1.):
         self.sys = sys
         self.Dx, self.Du = sys.Dx, sys.Du
         self.p_obs = p_obs #obstacle position
@@ -101,9 +102,10 @@ class CostModelCollisionEllipsoid():
         self.w_obs = w_obs
         self.d_thres = d_thres
         self.obs_status = False
+        self.ee_id = ee_id
         
     def calc(self, x, u):
-        p,_ = self.sys.compute_ee(x)
+        p,_ = self.sys.compute_ee(x, self.ee_id)
         self.normalized_d = (p-self.p_obs).T.dot(self.Sigma_obs_inv).dot(p-self.p_obs) 
         if self.normalized_d < self.d_thres:
             self.obs_status = True #very near to the obstacle
@@ -116,15 +118,15 @@ class CostModelCollisionEllipsoid():
     def calcDiff(self, x, u, recalc = True):
         if recalc:
             self.calc(x, u)
-        self.J   = self.sys.compute_Jacobian(x)
-        p,_      = self.sys.compute_ee(x)
+        self.J   = self.sys.compute_Jacobian(x, self.ee_id)[:3]  #Only use the translation part
+        p,_      = self.sys.compute_ee(x, self.ee_id)
         
         if self.obs_status:
             Jtemp = self.J.T.dot(self.Sigma_obs_inv).dot(p-self.p_obs)
             self.Lx = np.zeros(self.Dx)
-            self.Lx[:self.Dx/2]  = self.w_obs*Jtemp.dot(self.normalized_d-self.d_thres)
+            self.Lx[:int(self.Dx/2)]  = self.w_obs*Jtemp.dot(self.normalized_d-self.d_thres)
             self.Lxx = np.zeros((self.Dx, self.Dx))
-            self.Lxx[:self.Dx/2, :self.Dx/2] = self.w_obs*Jtemp.T.dot(Jtemp)
+            self.Lxx[:int(self.Dx/2), :int(self.Dx/2)] = self.w_obs*Jtemp.T.dot(Jtemp)
         else:
             self.Lx = np.zeros(self.Dx)
             self.Lxx = np.zeros((self.Dx, self.Dx))
