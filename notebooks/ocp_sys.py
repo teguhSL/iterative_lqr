@@ -165,7 +165,7 @@ class URDFRobot():
     
     def compute_Jacobian(self, x, ee_id):
         zeros = [0.]*self.dof
-        Jl, Ja = p.calculateJacobian(self.robot_id, ee_id, [0.,0.,0.], zeros,zeros,zeros)
+        Jl, Ja = p.calculateJacobian(self.robot_id, ee_id, [0.,0.,0.], x[:self.dof].tolist(),zeros,zeros)
         Jl, Ja = np.array(Jl), np.array(Ja)
         self.J = np.concatenate([Jl, Ja], axis=0)
         return self.J
