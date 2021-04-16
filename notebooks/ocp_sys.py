@@ -149,8 +149,10 @@ class URDFRobot():
         
         A[:self.dof, self.dof:] = np.eye(self.dof)*self.dt
         
-        B[self.dof:,:] = np.eye(self.Du)
-        
+        #B[self.dof:,:] = np.eye(self.Du)
+        B[:self.dof,:] = np.eye(self.Du) * self.dt * self.dt /2
+        B[-self.dof:,:] = np.eye(self.Du) * self.dt    
+
         self.A, self.B = A,B
         return A,B
     
