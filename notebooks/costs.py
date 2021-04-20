@@ -31,79 +31,6 @@ class CostModelQuadratic():
         self.Luu = self.R.copy()
         self.Lxu = np.zeros((self.Dx, self.Du))
 
-class CostModelQuadraticPositionOrientation():
-    '''
-    The quadratic cost model for the end-effector's orientation (quaternion) and position
-    '''  
-    def __init__(self, sys, W, ee_id, o_ref = None, p_ref = None):
-        self.sys = sys
-        self.Dx, self.Du = sys.Dx,sys.Du
-        self.W = W
-        self.o_ref = o_ref
-        self.p_ref = p_ref
-
-        if o_ref is None: self.o_ref = np.array([1,0,0,0])
-        else: self.o_ref = np.hstack(( o_ref[-1] , o_ref[:-1] )) # XYZW to WXYZ
-        if p_ref is None: self.p_ref = np.array([0,0,0])
-
-        self.ee_id = ee_id
-    def dQuatToDxJac(self,q):
-        H = np.array([
-            [-q[1] , q[0] , -q[3] , q[2]],
-            [-q[2] , q[3] , q[0] , -q[1]],
-            [-q[3] , -q[2] , q[1] , q[0]],
-        ])
-        return H
-    
-    def dist(self,x,y):
-        dist = x.T @ y
-        dist = 1 if dist > 1 else dist
-        dist = -1 if dist < -1 else dist
-
-        ac = np.arccos(dist)
-        if ac < 0:
-            ac -= np.pi
-        return ac
-
-    def logMap(self,base,y):
-        temp = y - base.T @ y * base
-        
-        if(np.linalg.norm(temp)==0):
-            return np.zeros(len(y))
-        
-        return self.dist(base,y) * temp / np.linalg.norm(temp)
-
-    def set_ref(self,o_ref,p_ref):
-        self.p_ref = p_ref
-        self.o_ref = o_ref 
-        self.o_ref = np.hstack(( o_ref[-1] , o_ref[:-1] ))
-
-    def calc(self,x,u):
-        pos,orn = self.sys.compute_ee(x,self.ee_id)
-        orn = np.hstack(( orn[-1] , orn[:-1] )) # XYZW to WXYZ
-        
-        orientation_error = -2 * self.dQuatToDxJac(self.o_ref) @ self.logMap(self.o_ref,orn)
-        position_error = self.p_ref - pos
-        error = np.hstack(( position_error , orientation_error ))
-        self.L = 0.5 * error.T @ self.W @ error
-        return self.L
-
-    def calcDiff( self,x,u):
-        pos,orn = self.sys.compute_ee(x,self.ee_id)
-        orn = np.hstack(( orn[-1] , orn[:-1] )) # XYZW to WXYZ
-        orientation_error = -2 * self.dQuatToDxJac(self.o_ref) @ self.logMap(self.o_ref,orn)
-        position_error = self.p_ref - pos
-        error = np.hstack(( position_error , orientation_error ))
-        
-        self.J = -1*self.sys.compute_Jacobian(x,self.ee_id) # Full Jacobian
-        self.Lx = self.J.T @ self.W @ error
-        self.Lx = np.concatenate([ self.Lx , np.zeros(self.Dx//2)])
-        self.Lu = np.zeros(self.Du)
-        self.Lxx = np.zeros((self.Dx,self.Dx))
-        self.Lxx[:self.Dx//2,:self.Dx//2] = self.J.T @ self.W @ self.J
-        self.Lxu = np.zeros((self.Dx, self.Du))
-        self.Luu  = np.zeros((self.Du, self.Du))
-
 class CostModelQuadraticOrientation():
     '''
     The quadratic cost model for the end-effector's orientation in quaternion
@@ -150,16 +77,16 @@ class CostModelQuadraticOrientation():
     def calc(self,x,u):
         _,orn = self.sys.compute_ee(x,self.ee_id)
         orn = np.hstack(( orn[-1] , orn[:-1] )) # XYZW to WXYZ
-        orientation_error = -2 * self.dQuatToDxJac(self.o_ref) @ self.logMap(self.o_ref,orn)
+        orientation_error = 2 * self.dQuatToDxJac(self.o_ref) @ self.logMap(self.o_ref,orn)
         self.L = 0.5 * orientation_error.T @ self.W @ orientation_error
         return self.L
 
     def calcDiff( self,x,u):
         _,orn = self.sys.compute_ee(x,self.ee_id)
         orn = np.hstack(( orn[-1] , orn[:-1] )) # XYZW to WXYZ
-        orientation_error = -2 * self.dQuatToDxJac(self.o_ref) @ self.logMap(self.o_ref,orn)
+        orientation_error = 2 * self.dQuatToDxJac(self.o_ref) @ self.logMap(self.o_ref,orn)
 
-        self.J = -1*self.sys.compute_Jacobian(x,self.ee_id)[-3:] # Rotational Jacobian
+        self.J = self.sys.compute_Jacobian(x,self.ee_id)[-3:] # Rotational Jacobian
         self.Lx = self.J.T @ self.W @ orientation_error
         self.Lx = np.concatenate([ self.Lx , np.zeros(self.Dx//2)])
         self.Lu = np.zeros(self.Du)

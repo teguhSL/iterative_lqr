@@ -44,3 +44,44 @@ def get_joint_limits(robot_id, dof):
         limit[0,i] = p.getJointInfo(robot_id, i)[8]
         limit[1,i] = p.getJointInfo(robot_id, i)[9]
     return limit
+
+def plot_pose_matrix(ax,T,label=None,scale=1):
+    base = T[:3,-1]
+    orn = T[:3,:3]
+    ax.plot([base[0],base[0]+scale*orn[0,0]],[base[1],base[1]+scale*orn[1,0]],[base[2],base[2]+scale*orn[2,0]],c='r')
+    ax.plot([base[0],base[0]+scale*orn[0,1]],[base[1],base[1]+scale*orn[1,1]],[base[2],base[2]+scale*orn[2,1]],c='g')
+    ax.plot([base[0],base[0]+scale*orn[0,2]],[base[1],base[1]+scale*orn[1,2]],[base[2],base[2]+scale*orn[2,2]],c='b')
+    
+    if label is not None:
+        ax.text(base[0],base[1],base[2],label)
+
+def set_axes_equal(ax):
+    '''Make axes of 3D plot have equal scale so that spheres appear as spheres,
+    cubes as cubes, etc..  This is one possible solution to Matplotlib's
+    ax.set_aspect('equal') and ax.axis('equal') not working for 3D.
+
+    Input
+      ax: a matplotlib axis, e.g., as output from plt.gca().
+    '''
+
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+
+    x_range = abs(x_limits[1] - x_limits[0])
+    x_middle = np.mean(x_limits)
+    y_range = abs(y_limits[1] - y_limits[0])
+    y_middle = np.mean(y_limits)
+    z_range = abs(z_limits[1] - z_limits[0])
+    z_middle = np.mean(z_limits)
+
+    # The plot bounding box is a sphere in the sense of the infinity
+    # norm, hence I call half the max range the plot radius.
+    plot_radius = 0.5*max([x_range, y_range, z_range])
+
+    ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
+    ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
+    ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
+    
+def quat2Mat(quat):
+    return np.array(p.getMatrixFromQuaternion(quat)).reshape(3,3)
