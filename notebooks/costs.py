@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy import dot
 from numpy.linalg import inv
+from scipy.spatial.transform import Rotation
+from ocp_utils import quat2Mat
 
 class CostModelQuadratic():
     def __init__(self, sys, Q = None, R = None, x_ref = None, u_ref = None):
@@ -35,14 +37,18 @@ class CostModelQuadraticOrientation():
     '''
     The quadratic cost model for the end-effector's orientation in quaternion
     '''
-    def __init__(self, sys, W, ee_id, o_ref = None):
+    def __init__(self, sys, W, ee_id, o_ref = None, R_ref = None):
         self.sys = sys
         self.Dx, self.Du = sys.Dx,sys.Du
-        self.W = W
-        self.o_ref = o_ref
-        if o_ref is None: self.o_ref = np.array([1,0,0,0])
-        else: self.o_ref = np.hstack(( o_ref[-1] , o_ref[:-1] )) # XYZW to WXYZ
+        self.W = W            
         self.ee_id = ee_id
+        
+        self.R_ref = R_ref #orientation of the target w.r.t. the world
+        if self.R_ref is not None:
+            self.W = self.R_ref.dot(self.W).dot(self.R_ref.T) #transform the cost coefficient to the object frame
+        if o_ref is None: o_ref = np.array([1,0,0,0])
+        self.set_ref(o_ref)
+
 
     def dQuatToDxJac(self,q):
         H = np.array([
@@ -72,7 +78,16 @@ class CostModelQuadraticOrientation():
 
     def set_ref(self,o_ref):
         self.o_ref = o_ref 
-        self.o_ref = np.hstack(( o_ref[-1] , o_ref[:-1] ))
+        
+        if self.R_ref is not None:
+            #o_ref is defined in the object coordinate system
+            #Transform o_ref to the world coordinate system
+            R_local = Rotation.from_quat(o_ref).as_matrix()
+            R_world = self.R_ref.dot(R_local)
+            o_world = Rotation.from_matrix(R_world).as_quat()
+            self.o_ref = o_world
+            
+        self.o_ref = np.hstack(( self.o_ref[-1] , self.o_ref[:-1] ))
 
     def calc(self,x,u):
         _,orn = self.sys.compute_ee(x,self.ee_id)
@@ -100,13 +115,17 @@ class CostModelQuadraticTranslation():
     '''
     The quadratic cost model for the end effector, p = f(x)
     '''
-    def __init__(self, sys, W, ee_id, p_ref = None):
+    def __init__(self, sys, W, ee_id, p_ref = None, R_ref = None):
         self.sys = sys
         self.Dx, self.Du = sys.Dx, sys.Du
         self.W = W
         self.p_ref = p_ref
         if p_ref is None: self.p_ref = np.zeros(3)
         self.ee_id = ee_id
+        
+        if R_ref is not None:
+            self.R_ref = R_ref #orientation of the target w.r.t. the world
+            self.W = self.R_ref.dot(self.W).dot(self.R_ref.T) #transform the cost coefficient to the object frame
         
     def set_ref(self, p_ref):
         self.p_ref = p_ref
@@ -158,12 +177,18 @@ class CostModelCollisionEllipsoid():
     '''
     The collision cost model between the end-effector and an ellipsoid obstacle
     '''
-    def __init__(self, sys, p_obs, Sigma_obs, ee_id, w_obs = 1., d_thres = 1.):
+    def __init__(self, sys, p_obs, Sigma_obs, ee_id, w_obs = 1., d_thres = 1., R_obs = None):
         self.sys = sys
         self.Dx, self.Du = sys.Dx, sys.Du
         self.p_obs = p_obs #obstacle position
-        self.Sigma_obs = Sigma_obs #obstacle ellipse covariance matrix
+        self.Sigma_obs = Sigma_obs #obstacle ellipse covariance matrix       
         self.Sigma_obs_inv = np.linalg.inv(Sigma_obs)
+        
+        
+        if R_obs is not None:
+            self.R_obs = R_obs #orientation of the obstacle w.r.t. the world
+            self.Sigma_obs_inv = self.R_obs.dot(self.Sigma_obs_inv).dot(self.R_obs.T) #transform the cost coefficient to the object frame    
+
         self.w_obs = w_obs
         self.d_thres = d_thres
         self.obs_status = False
