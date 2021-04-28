@@ -70,7 +70,7 @@ class ILQR():
         cost0 = self.calc_cost(self.xs, self.us)
         print(cost0)
         alpha = 1.
-        fac = 0.8
+        fac = 0.5
         cost = 5*np.abs(cost0)
         
         n_iter = 0
@@ -114,6 +114,8 @@ class ILQR():
             alpha *= fac
             n_iter += 1
         if n_iter == max_iter :
+            self.xs_new = np.array(xs_new)
+            self.us_new = np.array(us_new)
             raise ValueError('Cannot find a good direction')
         self.xs, self.us = np.array(xs_new), np.array(us_new)
         
@@ -169,11 +171,16 @@ class ILQR():
             self.del_xs_ls = self.Sx.dot(np.zeros(self.Dx)) + self.Su.dot(self.del_us_ls)
 
     def solve(self, n_iter = 3, method = 'batch', verbose = False, cost_thres = 1e-5):
+        self.sols = []
+        self.cost_values = [] 
         for i in range(n_iter):
+            self.iter = i
             self.calc_diff()
             self.backward_pass(method=method)
             try:
                 dcost = self.forward_pass(method=method)
+                self.sols += [self.xs]
+                self.cost_values += [self.cost]
                 if verbose is False:
                     clear_output(wait=True)
                 if dcost < cost_thres:

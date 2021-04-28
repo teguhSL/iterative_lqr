@@ -23,6 +23,7 @@ class CostModelQuadratic():
             self.u_ref = u_ref
     
     def calc(self, x, u):
+        self.res = x-self.x_ref
         self.L = 0.5*(x-self.x_ref).T.dot(self.Q).dot(x-self.x_ref) + 0.5*(u-self.u_ref).T.dot(self.R).dot(u-self.u_ref)
         return self.L
     
@@ -251,3 +252,83 @@ class CostModelCollisionEllipsoid():
         self.Lxu = np.zeros((self.Dx, self.Du))
         self.Luu  = np.zeros((self.Du, self.Du))
      
+    
+class CostModelCollisionSphere():
+    '''
+    The collision cost model between the end-effector and a sphere obstacle
+    '''
+    def __init__(self, sys, p_obs, r_obs, ee_id=0, w_obs = 1., d_margin = 0.):
+        self.sys = sys
+        self.Dx, self.Du = sys.Dx, sys.Du
+        self.p_obs = p_obs #obstacle position
+        self.r_obs = r_obs #obstacle radius
+        
+        self.w_obs = w_obs
+        self.d_thres = r_obs + d_margin
+        self.d_margin = d_margin
+        self.obs_status = False
+        self.ee_id = ee_id
+        
+    def calc(self, x, u):
+        p,_ = self.sys.compute_ee(x, self.ee_id)
+        self.res = p - self.p_obs
+        self.dist = np.linalg.norm(self.res)
+        if self.dist < self.d_thres:
+            self.obs_status = True #near to the obstacle
+            self.L = 0.5*self.w_obs*(self.dist-self.d_thres)**2
+        else:
+            self.obs_status = False
+            self.L = 0
+        return self.L
+    
+    def calcDiff(self, x, u, recalc = False):
+        if recalc:
+            self.calc(x, u)
+        self.J   = self.sys.compute_Jacobian(x, self.ee_id)[:3]  #Only use the translation part
+        p,_      = self.sys.compute_ee(x, self.ee_id)
+        
+        if self.obs_status:
+            Jtemp = self.J.T.dot(self.res)/self.dist
+            self.Lx = np.zeros(self.Dx)
+            self.Lx[:int(self.Dx/2)]  = self.w_obs*Jtemp.dot(self.dist-self.d_thres)
+            self.Lxx = np.zeros((self.Dx, self.Dx))
+            self.Lxx[:int(self.Dx/2), :int(self.Dx/2)] = self.w_obs*Jtemp.T.dot(Jtemp)
+        else:
+            self.Lx = np.zeros(self.Dx)
+            self.Lxx = np.zeros((self.Dx, self.Dx))
+        
+        self.Lu  = np.zeros(self.Du)
+        self.Lxu = np.zeros((self.Dx, self.Du))
+        self.Luu  = np.zeros((self.Du, self.Du))
+        
+        
+class CostModelBound:
+    """
+    This cost is to keep within the joint limits
+    """
+    def __init__(self, sys, bounds, weight=1., margin = 1e-3): 
+        self.bounds = bounds
+        self.dof = bounds.shape[1]
+        self.Dx, self.Du = sys.Dx, sys.Du
+        self.identity = np.eye(self.dof)
+        self.margin = margin
+        self.weight = weight
+        
+    def calc(self, x, u):
+        self.res = ((x - self.bounds[0]) * (x < self.bounds[0]) +  \
+                    (x - self.bounds[1]) * ( x > self.bounds[1]))
+        self.L = 0.5*self.weight*(self.res.dot(self.res))
+        return
+    
+    def calcDiff(self, x, u, recalc = True):
+        if recalc:
+            self.calc(x,u)        
+        stat = (x - self.margin < self.bounds[0]) + \
+                (x + self.margin > self.bounds[1])
+        self.J = stat*self.identity
+        self.Lx = self.weight*self.J.dot(self.res)
+        self.Lxx = self.weight*self.J.T.dot(self.J)
+        self.Lu  = np.zeros(self.Du)
+        self.Lxu = np.zeros((self.Dx, self.Du))
+        self.Luu  = np.zeros((self.Du, self.Du))
+        return  
