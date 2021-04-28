@@ -332,3 +332,57 @@ class CostModelBound:
         self.Lxu = np.zeros((self.Dx, self.Du))
         self.Luu  = np.zeros((self.Du, self.Du))
         return  
+    
+class CostModelCollisionSphereTestOri():
+    '''
+    The collision cost model between the end-effector and a sphere obstacle
+    '''
+    def __init__(self, sys, p_obs, r_obs, ee_id=0, w_obs = 1., d_margin = 0., use_true_Hessian = True):
+        self.sys = sys
+        self.Dx, self.Du = sys.Dx, sys.Du
+        self.dof = self.Du
+        self.p_obs = p_obs #obstacle position
+        self.r_obs = r_obs #obstacle radius
+        
+        self.w_obs = w_obs
+        self.d_thres = r_obs + d_margin
+        self.d_margin = d_margin
+        self.obs_status = False
+        self.ee_id = ee_id
+        self.use_true_Hessian = use_true_Hessian
+        
+    def calc(self, x, u):
+        p,_ = self.sys.compute_ee(x, self.ee_id)
+        self.res = p - self.p_obs
+        self.dist = np.linalg.norm(self.res)
+        if self.dist < self.d_thres:
+            self.obs_status = True #near to the obstacle
+            self.L = 0.5*self.w_obs*(self.dist-self.d_thres)**2
+        else:
+            self.obs_status = False
+            self.L = 0
+        return self.L
+    
+    def calcDiff(self, x, u, recalc = True):
+        if recalc:
+            self.calc(x, u)
+        self.J   = self.sys.compute_Jacobian(x, self.ee_id)[:3]  #Only use the translation part
+        p,_      = self.sys.compute_ee(x, self.ee_id)
+        
+        if self.obs_status:
+            Jtemp = self.J.T.dot(self.res)/self.dist
+            self.Lx = np.zeros(self.Dx)
+            self.Lx[:self.dof]  = self.w_obs*Jtemp.dot(self.dist-self.d_thres)
+            self.Lxx = np.zeros((self.Dx, self.Dx))
+            if self.use_true_Hessian:
+                self.Lxx[:self.dof, :self.dof] = self.w_obs*(np.eye(self.dof)*(self.dist-self.d_thres)/self.dist + self.d_thres*np.outer(self.res, self.res)/(self.dist**3))
+            else:
+                self.Lxx[:self.dof, :self.dof] = self.w_obs*Jtemp.T.dot(Jtemp)
+                
+        else:
+            self.Lx = np.zeros(self.Dx)
+            self.Lxx = np.zeros((self.Dx, self.Dx))
+        
+        self.Lu  = np.zeros(self.Du)
+        self.Lxu = np.zeros((self.Dx, self.Du))
+        self.Luu  = np.zeros((self.Du, self.Du))
