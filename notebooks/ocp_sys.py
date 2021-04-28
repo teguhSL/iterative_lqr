@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 import pybullet as p
 import time
+import crocoddyl
 
 class LinearSystem():
     def __init__(self,A,B):
@@ -196,3 +197,47 @@ class URDFRobot():
             clear_output(wait=True)
             self.set_q(x)
             time.sleep(self.dt)
+            
+class ActionModelRobot(crocoddyl.ActionModelAbstract):
+    def __init__(self, state, nu):
+        crocoddyl.ActionModelAbstract.__init__(self, state, nu)
+        
+    def init_robot_sys(self,robot_sys, nr = 1):
+        self.robot_sys = robot_sys
+        self.Du = robot_sys.Du
+        self.Dx = robot_sys.Dx
+        self.Dr = nr
+        
+    def set_cost(self, cost_model):
+        self.cost_model = cost_model
+        
+    def calc(self, data, x, u):
+        #calculate the cost
+        data.cost = self.cost_model.calc(x,u)
+        
+        #calculate the next state
+        data.xnext = self.robot_sys.step(x,u)
+        
+    def calcDiff(self, data, x, u, recalc = False):
+        if recalc:
+            self.calc(data, x, u)
+
+        #compute cost derivatives
+        self.cost_model.calcDiff(x, u)
+        data.Lx = self.cost_model.Lx.copy()
+        data.Lxx = self.cost_model.Lxx.copy()
+        data.Lu = self.cost_model.Lu.copy()
+        data.Luu = self.cost_model.Luu.copy()
+        
+        #compute dynamic derivatives 
+        A, B = self.robot_sys.compute_matrices(x,u)
+        data.Fx = A.copy()
+        data.Fu = B.copy()
+        
+    def createData(self):
+        data = ActionDataRobot(self)
+        return data
+
+class ActionDataRobot(crocoddyl.ActionDataAbstract):
+    def __init__(self, model):
+        crocoddyl.ActionDataAbstract.__init__(self,model)

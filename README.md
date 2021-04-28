@@ -10,3 +10,11 @@ Install pybullet
 pip3 install pybullet
 
 ```
+
+Install crocoddyl (using conda):
+
+```bash
+conda install crocoddyl -c conda-forge
+
+```
+
